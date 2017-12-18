@@ -17,8 +17,9 @@ type OrderItem struct {
 
 type Order struct {
 	Order struct {
-		Id    int
-		Items []OrderItem
+		Id       int
+		Items    []OrderItem
+		Currency string
 	}
 }
 
@@ -45,6 +46,10 @@ type Price struct {
 type PricingInfo struct {
 	Prices   []Price
 	VatBands map[string]float32 `json:"vat_bands"`
+}
+
+type CurrencyInfo struct {
+	Rates map[string]float32 `json:"rates"`
 }
 
 func main() {
@@ -100,6 +105,7 @@ func order(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
+
 	var order Order
 	err = json.Unmarshal(body, &order)
 	if err != nil {
@@ -123,20 +129,37 @@ func order(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order_id := order.Order.Id
-	var total_order_price int
+	currency := order.Order.Currency
+	var conversion_rate float32
+	if currency != "GBP" {
+		resp, err := http.Get("https://api.fixer.io/latest?base=GBP")
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+
+		var currency_map CurrencyInfo
+		if err := json.NewDecoder(resp.Body).Decode(&currency_map); err != nil {
+			panic(err)
+		}
+		conversion_rate = currency_map.Rates[currency]
+	} else {
+		conversion_rate = 1.0
+	}
+	var total_order_price float32
 	var total_order_vat float32
 
 	var order_items []OrderItemInfo
 
 	for _, o := range order.Order.Items {
-		order_item_price := price_map[o.ProductId].Price
-		order_item_vat := float32(price_map[o.ProductId].Price) * float32(o.Quantity) * vat_map[price_map[o.ProductId].VatBand]
-		order_items = append(order_items, OrderItemInfo{ProductId: o.ProductId, Price: order_item_price, Vat: order_item_vat, Quantity: o.Quantity})
-		total_order_price += price_map[o.ProductId].Price * o.Quantity
+		order_item_price := float32(price_map[o.ProductId].Price) * conversion_rate
+		order_item_vat := float32(price_map[o.ProductId].Price) * float32(o.Quantity) * conversion_rate * vat_map[price_map[o.ProductId].VatBand]
+		order_items = append(order_items, OrderItemInfo{ProductId: o.ProductId, Price: int(order_item_price), Vat: order_item_vat, Quantity: o.Quantity})
+		total_order_price += float32(price_map[o.ProductId].Price) * conversion_rate * float32(o.Quantity)
 		total_order_vat += order_item_vat
 	}
 
-	order_info := OrderInfo{OrderId: order_id, TotalPrice: total_order_price, TotalVat: total_order_vat, OrderItems: order_items}
+	order_info := OrderInfo{OrderId: order_id, TotalPrice: int(total_order_price), TotalVat: total_order_vat, OrderItems: order_items}
 
 	res, err := json.MarshalIndent(order_info, "", "\t")
 	if err != nil {
