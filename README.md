@@ -19,6 +19,12 @@ Pass order info to the API using e.g. `curl`:
 
 The JSON response output will be displayed in the terminal. An `orders.csv` will also be generated inside the working directory.
 
+## Currency conversions
+
+The default currency is GBP. Pricing info for different currencies can be obtained by passing the currency in the request e.g.:
+
+`curl -H "Content-Type: appication/json" -d '{"order": {"id": 12345, "customer": {}, "items": [{"product_id": 1, "quantity": 1}, {"product_id": 2, "quantity": 4}], "currency": "AUD"}}' localhost:8080/order`
+
 ## Running the Python analysis script
 
 1. Ensure you have Python 3 and `pandas` is installed
